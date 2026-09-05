@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'admin@nce.edu' ||
+          request.auth.token.email == 'maheenmohideen@gmail.com'
+        ))
+      );
+    }
+
+    function isStaffOwner(staffData) {
+      return isAuthenticated() && (
+        (staffData.userId != null && staffData.userId == request.auth.uid) ||
+        (staffData.email != null && request.auth.token.email != null && staffData.email == request.auth.token.email)
+      );
+    }
+
+    // Users Collection - Read/write own user doc or Admin
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+    
+    // Staff Collection - Admin full access; Staff can only read and self-link their own document
+    match /staff/{staffId} {
+      allow get: if isAdmin() || (isAuthenticated() && isStaffOwner(resource.data));
+      allow list: if isAdmin() || (
+        isAuthenticated() && (
+          (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
+          (resource.data.userId != null && resource.data.userId == request.auth.uid)
+        )
+      );
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        isStaffOwner(resource.data) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId', 'updatedAt', 'phone', 'designation'])
+      );
+
+      // Staff subcollection for their own published timetable
+      match /timetable/{docId} {
+        allow read: if isAdmin() || (
+          isAuthenticated() &&
+          isStaffOwner(get(/databases/$(database)/documents/staff/$(staffId)).data) &&
+          resource.data.status == 'PUBLISHED'
+        );
+        allow write: if isAdmin();
+      }
+    }
+
+    // Master Timetables - Strictly Admin only; staff must access their own timetable subcollection
+    match /timetables/{timetableId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /timetableVersions/{versionId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /schedulingRules/{ruleId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Curricular and institutional resources - readable by authenticated users, writable only by Admin
+    match /subjects/{subjectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /labs/{labId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /timeSlots/{slotId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /specialSessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.targetRole == 'all' || 
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+  }
+}
+

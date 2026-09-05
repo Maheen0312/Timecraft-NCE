@@ -1,0 +1,291 @@
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut, 
+  sendPasswordResetEmail,
+  signInWithPopup,
+  GoogleAuthProvider,
+  UserCredential
+} from 'firebase/auth';
+import { auth } from '@/firebase/auth';
+import { updateLastLogin, UserProfile, getUserProfile } from './userService';
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { db } from '@/firebase/firestore';
+
+export async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + "_nce_salt_2026");
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export const verifyAdminSecretCodeOnServer = async (secretCode: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch('/api/auth/verify-admin-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secretCode }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      return { success: false, message: data?.message || 'Invalid Admin Secret Code.' };
+    }
+    return { success: true, message: data.message };
+  } catch (error: any) {
+    console.error('Failed to verify admin code with server:', error);
+    return { success: false, message: 'Server verification error. Please check connection and try again.' };
+  }
+};
+
+export const loginWithGoogle = async (): Promise<UserCredential> => {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  try {
+    return await signInWithPopup(auth, provider);
+  } catch (error: any) {
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+      const customErr: any = new Error(
+        `Firebase Error: The domain "${currentHost}" is not authorized. Please add "${currentHost}" to Firebase Console → Authentication → Settings → Authorized domains.`
+      );
+      customErr.code = 'auth/unauthorized-domain';
+      customErr.domain = currentHost;
+      throw customErr;
+    }
+    throw error;
+  }
+};
+
+export const setupAccountWithGoogle = async (_role?: 'admin' | 'staff'): Promise<UserCredential> => {
+  return await loginWithGoogle();
+};
+
+export const login = async (email: string, password: string): Promise<{ profile: UserProfile; firebaseUser?: any }> => {
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  // 1. First attempt native Firebase Auth
+  try {
+    const userCred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    const userProfile = await getUserProfile(userCred.user.uid);
+    if (userProfile) {
+      sessionStorage.setItem('nce_active_uid', userCred.user.uid);
+      return { profile: userProfile, firebaseUser: userCred.user };
+    }
+  } catch (error: any) {
+    const code = error?.code || '';
+    // If not operation-not-allowed or configuration error, proceed to Firestore verification
+  }
+
+  // 2. Strict Database Authentication in Firestore users collection
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, where('email', '==', normalizedEmail));
+  const snap = await getDocs(q);
+
+  if (snap.empty) {
+    // Special bootstrap check: if user is logging in with default admin credentials
+    if (normalizedEmail === 'admin@nce.edu' && password === 'admin123') {
+      const adminProfile: UserProfile = {
+        uid: 'user_admin_bootstrap',
+        name: 'Dr. Administrator',
+        email: 'admin@nce.edu',
+        role: 'admin',
+        staffCode: 'ADMIN',
+        active: true,
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+      };
+      const passHash = await hashPassword('admin123');
+      await setDoc(doc(db, 'users', adminProfile.uid), {
+        ...adminProfile,
+        passwordHash: passHash,
+      });
+      sessionStorage.setItem('nce_active_uid', adminProfile.uid);
+      return { profile: adminProfile };
+    }
+
+    const err: any = new Error('No account found with this email. Please check your credentials or create an account.');
+    err.code = 'auth/user-not-found';
+    throw err;
+  }
+
+  const userDoc = snap.docs[0];
+  const userData = userDoc.data() as UserProfile & { passwordHash?: string };
+
+  if (userData.active === false) {
+    const err: any = new Error('This account has been deactivated. Please contact the administrator.');
+    err.code = 'auth/user-disabled';
+    throw err;
+  }
+
+  // Verify Password Hash
+  const inputHash = await hashPassword(password);
+  if (userData.passwordHash) {
+    if (userData.passwordHash !== inputHash) {
+      const err: any = new Error('Invalid email or password.');
+      err.code = 'auth/wrong-password';
+      throw err;
+    }
+  } else {
+    // If user was created without password hash, associate the hash on first verified login
+    await updateDoc(doc(db, 'users', userDoc.id), {
+      passwordHash: inputHash,
+      lastLogin: serverTimestamp()
+    });
+  }
+
+  // Verify staff authorization if profile claims staff role
+  let verifiedRole: 'admin' | 'staff' | 'unauthorized' | 'unrecognized' = userData.role;
+  let verifiedStaffCode: string | null = userData.staffCode || null;
+
+  if (userData.role === 'staff') {
+    const staffQuery = query(collection(db, 'staff'), where('email', '==', normalizedEmail));
+    const staffSnap = await getDocs(staffQuery);
+    if (!staffSnap.empty) {
+      const sData = staffSnap.docs[0].data();
+      verifiedStaffCode = sData.staffCode || verifiedStaffCode;
+      verifiedRole = 'staff';
+    } else {
+      // Not in authorized staff collection
+      verifiedRole = 'unauthorized';
+      verifiedStaffCode = null;
+      await updateDoc(doc(db, 'users', userDoc.id), {
+        role: 'unauthorized',
+        staffCode: null,
+      }).catch(console.error);
+    }
+  }
+
+  const profile: UserProfile = {
+    uid: userDoc.id,
+    name: userData.name,
+    email: userData.email,
+    role: verifiedRole,
+    staffCode: verifiedStaffCode,
+    active: userData.active,
+    createdAt: userData.createdAt,
+    lastLogin: new Date().toISOString()
+  };
+
+  sessionStorage.setItem('nce_active_uid', userDoc.id);
+  await updateLastLogin(userDoc.id).catch(console.error);
+  return { profile };
+};
+
+export const setupAccount = async (
+  email: string, 
+  password: string, 
+  name: string, 
+  role: 'admin' | 'staff'
+): Promise<{ profile: UserProfile; firebaseUser?: any }> => {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // 1. Try native Firebase Auth if available
+  try {
+    const userCred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    if (userCred && userCred.user) {
+      sessionStorage.setItem('nce_active_uid', userCred.user.uid);
+      return { firebaseUser: userCred.user, profile: {} as any };
+    }
+  } catch (error: any) {
+    const code = error?.code || '';
+    if (code !== 'auth/operation-not-allowed' && code !== 'auth/configuration-not-found') {
+      throw error;
+    }
+  }
+
+  // 2. Strict Database Account Creation in Firestore
+  const usersRef = collection(db, 'users');
+  const existingQuery = query(usersRef, where('email', '==', normalizedEmail));
+  const existingSnap = await getDocs(existingQuery);
+
+  if (!existingSnap.empty) {
+    const err: any = new Error('An account with this email already exists. Please sign in instead.');
+    err.code = 'auth/email-already-in-use';
+    throw err;
+  }
+
+  // Check if email matches staff
+  let isStaffMember = false;
+  let staffCodeToLink: string | null = null;
+  let resolvedName = name.trim();
+
+  try {
+    const staffQuery = query(collection(db, 'staff'), where('email', '==', normalizedEmail));
+    const staffSnap = await getDocs(staffQuery);
+    if (!staffSnap.empty) {
+      const staffDoc = staffSnap.docs[0];
+      const staffData = staffDoc.data();
+      isStaffMember = true;
+      staffCodeToLink = staffData.staffCode || null;
+      resolvedName = staffData.name || resolvedName;
+    }
+  } catch (e) {
+    console.error('Error querying staff for setup:', e);
+  }
+
+  if (role === 'staff' && !isStaffMember) {
+    const err: any = new Error('Access Denied — This email address is not authorized as Staff by the Administrator.');
+    err.code = 'auth/unauthorized-staff';
+    throw err;
+  }
+
+  const assignedRole = isStaffMember ? 'staff' : (role === 'admin' ? 'admin' : 'unauthorized');
+  const uid = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const passwordHash = await hashPassword(password);
+
+  const newUserProfile: UserProfile = {
+    uid,
+    name: resolvedName,
+    email: normalizedEmail,
+    role: assignedRole,
+    staffCode: staffCodeToLink,
+    active: true,
+    createdAt: serverTimestamp(),
+    lastLogin: serverTimestamp(),
+  };
+
+  await setDoc(doc(db, 'users', uid), {
+    ...newUserProfile,
+    passwordHash,
+  });
+
+  // Link staff doc if matched
+  if (staffCodeToLink) {
+    try {
+      const staffDocRef = doc(db, 'staff', `staff_${staffCodeToLink}`);
+      await updateDoc(staffDocRef, { userId: uid });
+    } catch (e) {
+      console.error('Error updating staff userId:', e);
+    }
+  }
+
+  sessionStorage.setItem('nce_active_uid', uid);
+  return { profile: newUserProfile };
+};
+
+export const logout = async (): Promise<void> => {
+  sessionStorage.removeItem('nce_active_uid');
+  try {
+    await firebaseSignOut(auth);
+  } catch (e) {
+    // Ignore signout errors
+  }
+};
+
+export const resetPassword = async (email: string): Promise<void> => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (e) {
+    // If native reset email fails, check if user exists in database
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', email.toLowerCase().trim()));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      const err: any = new Error('No account found with this email address.');
+      err.code = 'auth/user-not-found';
+      throw err;
+    }
+  }
+};
+
