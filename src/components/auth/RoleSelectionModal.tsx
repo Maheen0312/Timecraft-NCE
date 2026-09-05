@@ -17,7 +17,9 @@ import {
   Loader2,
   ChevronRight,
   Sparkles,
-  Building
+  Building,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 type ModalStep = 'SELECT_PORTAL' | 'ADMIN_VERIFY' | 'STAFF_DENIED';
@@ -33,6 +35,7 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({ isOpen }
 
   const [step, setStep] = useState<ModalStep>('SELECT_PORTAL');
   const [adminSecretCode, setAdminSecretCode] = useState('');
+  const [showSecretCode, setShowSecretCode] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isCheckingStaff, setIsCheckingStaff] = useState(false);
@@ -46,6 +49,7 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({ isOpen }
   const handleSelectAdmin = () => {
     setAdminError('');
     setAdminSecretCode('');
+    setShowSecretCode(false);
     setStep('ADMIN_VERIFY');
   };
 
@@ -323,7 +327,7 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({ isOpen }
                   </div>
                   <input
                     id="admin-secret-code-input"
-                    type="password"
+                    type={showSecretCode ? "text" : "password"}
                     autoFocus
                     placeholder="Enter admin secret passcode"
                     value={adminSecretCode}
@@ -331,8 +335,22 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({ isOpen }
                       setAdminSecretCode(e.target.value);
                       if (adminError) setAdminError('');
                     }}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-300 dark:border-slate-700 rounded-xl text-sm font-mono text-gray-900 dark:text-white placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-11 py-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-300 dark:border-slate-700 rounded-xl text-sm font-mono text-gray-900 dark:text-white placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
+                  <button
+                    id="toggle-admin-secret-visibility-button"
+                    type="button"
+                    onClick={() => setShowSecretCode(prev => !prev)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer transition-colors focus:outline-none"
+                    title={showSecretCode ? "Hide Admin Secret Code" : "View Admin Secret Code"}
+                    aria-label={showSecretCode ? "Hide Admin Secret Code" : "View Admin Secret Code"}
+                  >
+                    {showSecretCode ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
                 {adminError && (
                   <div id="admin-secret-error-message" className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 pt-1">

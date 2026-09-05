@@ -33,7 +33,7 @@ async function startServer() {
       }
 
       const expectedCode = (process.env.ADMIN_SECRET_CODE || 'NCE9518').trim();
-      if (secretCode.trim() !== expectedCode) {
+      if (secretCode.trim().toUpperCase() !== expectedCode.toUpperCase()) {
         return res.status(401).json({ success: false, message: 'Invalid Admin Secret Code.' });
       }
 

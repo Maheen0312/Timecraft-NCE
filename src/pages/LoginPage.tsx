@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { motion } from 'framer-motion';
-import { Calendar, Sparkles, ShieldCheck, UserCheck, Shield, AlertTriangle, Copy, Check } from 'lucide-react';
+import { Calendar, Sparkles, ShieldCheck, UserCheck, Shield, AlertTriangle, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { login, resetPassword, setupAccount, loginWithGoogle, setupAccountWithGoogle, verifyAdminSecretCodeOnServer } from '@/services/authService';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -18,9 +18,11 @@ export default function LoginPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [setupRole, setSetupRole] = useState<'admin' | 'staff'>('admin');
   const [adminPasscode, setAdminPasscode] = useState('');
+  const [showAdminPasscode, setShowAdminPasscode] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
   const [copiedDomain, setCopiedDomain] = useState(false);
@@ -336,14 +338,29 @@ export default function LoginPage() {
                     </label>
                   </div>
                   {setupRole === 'admin' && (
-                    <Input
-                      label="Admin Authorization Passcode"
-                      type="password"
-                      placeholder="Enter admin authorization passcode"
-                      required
-                      value={adminPasscode}
-                      onChange={(e) => setAdminPasscode(e.target.value)}
-                    />
+                    <div className="flex flex-col space-y-1.5 w-full">
+                      <label className="text-sm font-medium text-luna-dark-navy dark:text-slate-200">
+                        Admin Authorization Passcode
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showAdminPasscode ? 'text' : 'password'}
+                          placeholder="Enter admin authorization passcode"
+                          required
+                          value={adminPasscode}
+                          onChange={(e) => setAdminPasscode(e.target.value)}
+                          className="flex h-10 w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-3 pr-10 py-2 text-sm font-mono text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-luna-primary-blue focus:border-transparent transition-all duration-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPasscode(!showAdminPasscode)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                          title={showAdminPasscode ? 'Hide Passcode' : 'View Passcode'}
+                        >
+                          {showAdminPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <Input
                     label="Full Name"
@@ -364,14 +381,29 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
               {mode !== 'reset' && (
-                <Input
-                  label="Password"
-                  type="password"
-                  placeholder="••••••••"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="flex flex-col space-y-1.5 w-full">
+                  <label className="text-sm font-medium text-luna-dark-navy dark:text-slate-200">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="flex h-10 w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-3 pr-10 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-luna-primary-blue focus:border-transparent transition-all duration-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                      title={showPassword ? 'Hide Password' : 'View Password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
