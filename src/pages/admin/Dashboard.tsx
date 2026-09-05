@@ -180,7 +180,7 @@ export default function AdminDashboard() {
       <div className="bg-linear-to-r from-luna-dark-navy via-luna-deep-blue to-[#1e5478] p-6 sm:p-8 rounded-3xl text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="space-y-2 z-10">
           <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-luna-light-cyan backdrop-blur-xs border border-white/10">
-            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-luna-cyan" /> NCE Timecraft Phase 5 • Production Release
+            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-luna-cyan" /> NCE Timecraft 
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
             Academic Scheduling Control Center
