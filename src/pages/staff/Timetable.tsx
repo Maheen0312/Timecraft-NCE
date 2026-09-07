@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getMyStaffTimetable } from '@/services/timetableService';
+import { getMyStaffTimetable, subscribeToMyStaffTimetable } from '@/services/timetableService';
 import { Timetable, TimetableEntry } from '@/types/timetable';
 import { 
   Calendar, 
@@ -57,7 +57,18 @@ export default function StaffTimetable() {
   };
 
   useEffect(() => {
-    fetchStaffTimetable();
+    if (!authorizedStaff?.id) {
+      setLoading(false);
+      return;
+    }
+    
+    setLoading(true);
+    const unsubscribe = subscribeToMyStaffTimetable(authorizedStaff.id, (data) => {
+      setTimetable(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [authorizedStaff]);
 
   const handlePrint = () => {

@@ -25,6 +25,7 @@ import { CollegeLogo } from '@/components/common/CollegeLogo';
 const navigation = [
   { name: 'Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
   { name: 'My Timetable', href: '/staff/timetable', icon: Calendar },
+  { name: 'Dept Timetable', href: '/staff/department-timetable', icon: Users },
   { name: 'My Subjects', href: '/staff/subjects', icon: BookOpen },
   { name: 'My Hours', href: '/staff/hours', icon: Clock },
   { name: 'Notifications', href: '/staff/notifications', icon: Bell },

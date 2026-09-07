@@ -86,7 +86,7 @@ export default function App() {
                   <Route index element={<Navigate to="/staff/dashboard" replace />} />
                   <Route path="dashboard" element={<StaffDashboard />} />
                   <Route path="timetable" element={<StaffTimetable />} />
-                  <Route path="department-timetable" element={<Navigate to="/staff/timetable" replace />} />
+                  <Route path="department-timetable" element={<StaffDepartmentTimetable />} />
                   <Route path="subjects" element={<StaffSubjects />} />
                   <Route path="hours" element={<StaffHours />} />
                   <Route path="notifications" element={<StaffNotifications />} />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { getAllTimetables } from '@/services/timetableService';
+import { getPublishedTimetable } from '@/services/timetableService';
 import { Timetable, TimetableEntry } from '@/types/timetable';
 import { printTimetable } from '@/utils/printUtils';
 import { Calendar, Clock, Lock, Coffee, Utensils, Printer, Download, RefreshCw, Users, Building2 } from 'lucide-react';
@@ -29,8 +29,7 @@ export default function StaffDepartmentTimetable() {
     const load = async () => {
       setLoading(true);
       try {
-        const tList = await getAllTimetables();
-        const published = tList.find(t => t.status === 'PUBLISHED') || tList[0];
+        const published = await getPublishedTimetable();
         setTimetable(published || null);
       } catch (e) {
         console.error(e);

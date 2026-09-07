@@ -9,7 +9,8 @@ import {
   deleteDoc, 
   query, 
   where, 
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '@/firebase/firestore';
 import { Timetable, ValidationResult, TimetableStatus, Subject, Room, TimetableEntry, TimetableChangeLog, ExtractedTimetableImageResult, TimetableStats } from '@/types/timetable';
@@ -252,10 +253,15 @@ export const getPublishedTimetable = async (department?: string): Promise<Timeta
   try {
     const timetablesRef = collection(db, TIMETABLES_COLLECTION);
     const q = query(timetablesRef, where('status', '==', 'PUBLISHED'));
-    const [snapshot, staffList] = await Promise.all([
-      getDocs(q),
-      getAllStaff(),
-    ]);
+    
+    const snapshot = await getDocs(q);
+    
+    let staffList: StaffProfile[] = [];
+    try {
+      staffList = await getAllStaff();
+    } catch (err) {
+      console.warn('Could not fetch all staff for enrichment (expected for non-admins)');
+    }
     
     const staffMap = new Map<string, string>();
     staffList.forEach(s => staffMap.set(s.staffCode.toUpperCase(), s.name));
@@ -307,6 +313,13 @@ export const updateTimetableStatus = async (id: string, status: TimetableStatus)
     status,
     updatedAt: serverTimestamp(),
   });
+  
+  if (status === 'PUBLISHED') {
+    const t = await getTimetableById(id);
+    if (t) await syncStaffPublishedTimetables(t);
+  } else {
+    await archiveStaffPublishedTimetables();
+  }
 };
 
 export const publishTimetable = async (id: string, isPublished: boolean = true): Promise<void> => {
@@ -381,11 +394,7 @@ export const archiveStaffPublishedTimetables = async (): Promise<void> => {
       if (!staff.id) continue;
       try {
         const staffTimetableDocRef = doc(db, 'staff', staff.id, 'timetable', 'published');
-        await setDoc(staffTimetableDocRef, {
-          status: 'ARCHIVED',
-          entries: [],
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
+        await deleteDoc(staffTimetableDocRef);
       } catch (err) {
         // Ignore single doc failure
       }
@@ -419,6 +428,39 @@ export const getMyStaffTimetable = async (staffId: string): Promise<Timetable | 
     console.error('Error fetching staff timetable from Firestore:', err);
     return null;
   }
+};
+
+export const subscribeToMyStaffTimetable = (
+  staffId: string,
+  onUpdate: (timetable: Timetable | null) => void
+): (() => void) => {
+  if (!staffId) {
+    onUpdate(null);
+    return () => {};
+  }
+  
+  const docRef = doc(db, 'staff', staffId, 'timetable', 'published');
+  
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as Timetable;
+        if (data.status === 'PUBLISHED') {
+          onUpdate({
+            id: docSnap.id,
+            ...data,
+          });
+          return;
+        }
+      }
+      onUpdate(null);
+    },
+    (err) => {
+      console.error('Error subscribing to staff timetable:', err);
+      onUpdate(null);
+    }
+  );
 };
 
 export const publishTimetableSafely = async (
@@ -480,12 +522,26 @@ export const publishTimetableSafely = async (
 };
 
 export const deleteTimetable = async (id: string): Promise<void> => {
+  const t = await getTimetableById(id);
   const docRef = doc(db, TIMETABLES_COLLECTION, id);
   await deleteDoc(docRef);
+  if (t?.status === 'PUBLISHED') {
+    await archiveStaffPublishedTimetables();
+  }
 };
 
 export const deleteMultipleTimetables = async (ids: string[]): Promise<void> => {
-  await Promise.all(ids.map(id => deleteDoc(doc(db, TIMETABLES_COLLECTION, id))));
+  let hasPublished = false;
+  for (const id of ids) {
+    const t = await getTimetableById(id);
+    if (t?.status === 'PUBLISHED') {
+      hasPublished = true;
+    }
+    await deleteDoc(doc(db, TIMETABLES_COLLECTION, id));
+  }
+  if (hasPublished) {
+    await archiveStaffPublishedTimetables();
+  }
 };
 
 export const validateExistingTimetable = async (id: string): Promise<ValidationResult | null> => {

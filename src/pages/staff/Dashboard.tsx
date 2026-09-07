@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getMyStaffTimetable } from '@/services/timetableService';
+import { getMyStaffTimetable, subscribeToMyStaffTimetable } from '@/services/timetableService';
 import { Timetable } from '@/types/timetable';
 import { 
   Calendar, 
@@ -24,22 +24,17 @@ export default function StaffDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = async () => {
-      if (!authorizedStaff?.id) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const staffTimetable = await getMyStaffTimetable(authorizedStaff.id);
-        setTimetable(staffTimetable);
-      } catch (e) {
-        console.error('Failed to load dashboard timetable:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    if (!authorizedStaff?.id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const unsubscribe = subscribeToMyStaffTimetable(authorizedStaff.id, (data) => {
+      setTimetable(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [authorizedStaff]);
 
   const staffCode = authorizedStaff?.staffCode || profile?.staffCode || '';

@@ -60,9 +60,10 @@ service cloud.firestore {
       }
     }
 
-    // Master Timetables - Strictly Admin only; staff must access their own timetable subcollection
+    // Master Timetables - Admins get full access; Staff can only read if PUBLISHED
     match /timetables/{timetableId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'PUBLISHED');
+      allow write: if isAdmin();
     }
 
     match /timetableVersions/{versionId} {
